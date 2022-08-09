@@ -3,8 +3,8 @@
 # if __name__ == "__main__":
 #     pass
 
-#{"shape":"Sphere", "size":{"radius":3.0}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "orientation":[1,2.0,-1],}
-#{"shape":"Cubiod", "size":{"height":3.0,"length":2.4, "width":0.1}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "orientation":[1,2.0,-1],}
+#{"shape":"Sphere", "size":{"radius":3.0}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "quaternion":(1,2.0,-1,1)}
+#{"shape":"Cubiod", "size":{"height":3.0,"length":2.4, "width":0.1}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "quaternion":(1,2.0,-1,1),}
 #
 #
 #
@@ -25,7 +25,7 @@ class ObjectData(QObject):
             "shape":None,
             "rgb":tuple([random.randint(0,255) for i in range(3)]),
             "position":tuple([random.uniform(-10,10) for i in range(3)]),
-            "orientation":(0,1,0),
+            "quaternion":([random.gauss(0, 1) for i in range(3)] + [random.uniform(-180,180)]),
             "id": ObjectData.counter,
             "name": None,
         }
@@ -43,12 +43,19 @@ class ObjectData(QObject):
 
     def setPosition(self, pos):
         if pos == self.data["position"]:	return
+
+        try:
+            X,Y,Z = map(float,pos)
+            pos = X,Y,Z
+        except:
+            print("position value error")
+            return
         self.data["position"] = pos
         id = self.getId()
         self.positionChanged.emit(id,pos)
 
     def setColor(self, rgb):
-        print('entering set color')
+        #print('entering set color')
         if rgb == self.data["rgb"]:	return
         r,g,b = rgb
         try:
@@ -64,7 +71,7 @@ class ObjectData(QObject):
         id = self.getId()
         self.data["rgb"] = (r,g,b)
         rgb = r,g,b
-        print("sending: color changed on", id);
+        #print("sending: color changed on", id);
         self.colorChanged.emit(id,rgb)
 
     def setName(self, name):
@@ -74,32 +81,59 @@ class ObjectData(QObject):
         self.nameChanged.emit(id,name)
 
     def setShape(self, shape_info):
-        if self.data["shape"] == "Sphere":
-            self.setSphere(self,shape_info["radius"])
-        if self.data["shape"] == "Cuboid":
-            self.setCuboid(self,shape_info["lengths"])
+        if "shape" not in shape_info: raise
+        if shape_info["shape"] == "Sphere":
+            self.setSphere(shape_info["radius"])
+        if shape_info["shape"] == "Cuboid":
+            self.setCuboid(shape_info["lengths"])
 
     def setSphere(self, radius):
-        if self.data["shape"] == "Sphere" and raidus == self.data["radius"]: return
-        shape_info = {"shape":"Spehre", "radius":radius}
+        if self.data["shape"] == "Sphere" and radius == self.data["radius"]: return
+        try:
+            radius = float(radius)
+            if radius <= 0:
+                raise
+        except:
+            print("radius value error")
+            return
+        shape_info = {"shape":"Sphere", "radius":radius}
+        self.data.update(shape_info)
         id = self.getId()
         self.shapeChanged.emit(id,shape_info)
 
     def setCuboid(self, lengths):
         if self.data["shape"] == "Cuboid" and lengths == self.data["lengths"]: return
+        try:
+            a,b,c = map(float,lengths)
+            if a <= 0 or b <= 0 or c <= 0:
+                raise
+            lengths = (a,b,c)
+        except Exception as e:
+            print(e)
+            print("lengths value error")
+            return
         shape_info = {"shape":"Cuboid", "lengths":lengths}
+        self.data.update(shape_info)
         id = self.getId()
+        print("sending shaped change",id,shape_info)
         self.shapeChanged.emit(id,shape_info)
 
-    def setOrientation(self, norm_vector):
-        pass
+    def setOrientation(self, quaternion):
+        try:
+            a,b,c,d = map(float,quaternion)
+            quaternion = a,b,c,d
+        except:
+            print("rotation parameter error")
+            return
+        self.data["quaternion"] = quaternion
+        self.orientationChanged.emit(id,quaternion)
 
-    positionChanged = Signal(int,QVector3D)
-    orientationChanged = Signal(int,float,float,float)
+
+    positionChanged = Signal(int,tuple)
+    orientationChanged = Signal(int,tuple)
     colorChanged = Signal(int,tuple)
     shapeChanged = Signal(int,dict)
     nameChanged = Signal(int,str)
-
 
     
 class SphereData(ObjectData):
@@ -131,7 +165,7 @@ class ObjectModel(QObject):
     def focus(self,id):
         if(self.focussed == id):	return
         self.focussed = id
-        print("sending: focus on", id);
+        #print("sending: focus on", id);
         self.Focus.emit(id)
 
     def insert(self,object = None):
@@ -163,10 +197,10 @@ class ObjectModel(QObject):
         print("updating")
         print(buffer)
         #if "name" in buffer: object.setName(buffer["name"])
-        #if "shape" in buffer: object.setShape(buffer["shape"])
+        if "shape" in buffer: object.setShape(buffer)
         if "rgb" in buffer: object.setColor(buffer["rgb"])
-        #if "position" in buffer: object.setPosition(buffer["position"])
-        #if "orientation" in buffer: object.setOrientation(buffer["orientation"])
+        if "quaternion" in buffer: object.setOrientation(buffer["quaternion"])
+        if "position" in buffer: object.setPosition(buffer["position"])
 
         print(object)
 

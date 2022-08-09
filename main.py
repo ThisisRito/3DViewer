@@ -21,7 +21,7 @@ from PySide2.QtWidgets import QFormLayout,QListWidget, QPushButton
 from PySide2.QtWidgets import QComboBox
 from PySide2.QtWidgets import QLabel
 
-from PySide2.QtGui import QColor
+from PySide2.QtGui import QColor,QQuaternion
 
 from PySide2.QtCore import(Property, Signal, Slot, QObject)
 
@@ -52,6 +52,7 @@ class Entity(Qt3DCore.QEntity):
         self.addComponent(self._material)
 
     def set_shape(self,id,shape_info):
+        print("received set shape", id, shape_info)
         if shape_info["shape"] == "Sphere":
             radius = shape_info["radius"]
             self._mesh = Qt3DExtras.QSphereMesh()
@@ -60,12 +61,12 @@ class Entity(Qt3DCore.QEntity):
 
         if shape_info["shape"] == "Cuboid":
             x,y,z = shape_info["lengths"]
+            print(x,y,z)
             self._mesh = Qt3DExtras.QCuboidMesh()
             self._mesh.setXExtent(x)
             self._mesh.setYExtent(y)
             self._mesh.setZExtent(z)
             self.addComponent(self._mesh)
-
 
     def remove(self):
         self.setRootEntity(None)
@@ -77,10 +78,14 @@ class Entity(Qt3DCore.QEntity):
         x,y,z = position
         self._transform.setTranslation(QVector3D(x,y,z))
 
-    def get_position(self):
+    def set_orientation(self,id,quaternion):
+        x,y,z,theta = quaternion;
+        #print('log',QQuaternion(theta,QVector3D(x,y,z)))
+        #print('log',x,y,z,theta)
+
+        self._transform.setRotation(QQuaternion.fromAxisAndAngle(QVector3D(x,y,z),theta))
         pass
 
-        #shapeChanged = Signal(int,dict)
     def set_rgb(self,id,rgb):
         print('received')
         r,g,b = rgb
@@ -146,8 +151,6 @@ class ObjectView(Qt3DExtras.Qt3DWindow):
 
 
 
-    #{"shape":"Sphere", "size":{"radius":3.0}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "orientation":[1,2.0,-1],}
-    #{"shape":"Cubiod", "size":{"height":3.0,"length":2.4, "width":0.1}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "orientation":[1,2.0,-1],}
 
 class ObjectsController(QObject):
     def __init__(self):
@@ -169,13 +172,15 @@ class ObjectsController(QObject):
     def insert(self,id,object):
         entity = Entity(self.view.rootEntity)
         entity.set_shape(id,object.data)
-        entity.set_position(id,object.data["position"])
         entity.set_rgb(id,object.data["rgb"])
+        entity.set_orientation(id,object.data["quaternion"])
+        entity.set_position(id,object.data["position"])
         self.view.insert(id,entity)
 
         object.positionChanged.connect(entity.set_position);
         object.colorChanged.connect(entity.set_rgb);
         object.shapeChanged.connect(entity.set_shape);
+        object.orientationChanged.connect(entity.set_orientation);
         pass
 
     #def update(self,object):
@@ -187,6 +192,7 @@ class ObjectsController(QObject):
         object.positionChanged.disconnect(entity.set_position);
         object.colorChanged.disconnect(entity.set_rgb);
         object.shapeChanged.disconnect(entity.set_shape);
+        object.orientationChanged.disconnect(entity.set_orientation);
         self.view.remove(id)
         return
 
@@ -306,7 +312,10 @@ class DataView(QWidget):
         if title != None: self.layout.addRow(title,QLabel())
         for key,value in zip(keys,values):
             print(key,value)
-            self.editors[key] = QLineEdit(str(value))
+            if(isinstance(value,float)):
+                self.editors[key] = QLineEdit("{:.2f}".format(value))
+            else:
+                self.editors[key] = QLineEdit(str(value))
             self.layout.addRow(key,self.editors[key])
         print(self.layout.count())
 
@@ -317,7 +326,11 @@ class PanelView(QWidget):
 
         self.layout = QFormLayout()
         self.name = QLabel()
+
         self.shape_box = QComboBox()
+        self.shape_box.addItems(["Sphere","Cuboid"])
+        self.shape_box.currentIndexChanged.connect(self.change_shape)
+
         self.size_view = DataView()
         self.rgb_view = DataView()
         self.position_view = DataView()
@@ -325,22 +338,35 @@ class PanelView(QWidget):
         self.apply_button = QPushButton()
         self.apply_button.setText("apply")
 
+    def change_shape(self, shape):
+        #0 for Sphere
+        #1 for Cuboid
+        object = None
+        if shape == 0:
+            object = SphereData()
+            self.size_view.set_dict(None,["radius"],[object.data["radius"]])
+        if shape == 1:
+            object = CuboidData()
+            keys = ("length","width","height")
+            values = object.data["lengths"]
+            self.size_view.set_dict(None,keys,values)
 
     def clear(self):
         #self.layout = QFormLayout()
-
         while self.layout.count() > 0:
             item = self.layout.itemAt(0)
             self.layout.removeItem(item)
             #self.layout.removeRow(0)
+
+    #PySide2.QtWidgets.QComboBox.currentIndexChanged(index)
 
     def display(self, data):
         self.clear()
         print(self.layout.count())
 
         self.name.setText(data["name"])
-        self.shape_box.addItems(["Sphere","Cuboid"])
 
+        print(data)
         if(data["shape"] == "Sphere"):
             self.size_view.set_dict(None,["radius"],[data["radius"]])
             self.shape_box.setCurrentIndex(0)
@@ -359,9 +385,9 @@ class PanelView(QWidget):
         self.position_view.set_dict("Coordinates",keys,values)
 
 
-        keys = ("x","y","z")
-        values = data["orientation"]
-        self.orientation_view.set_dict("Orientation",keys,values)
+        keys = ("x","y","z","theta")
+        values = data["quaternion"]
+        self.orientation_view.set_dict("Quaternion",keys,values)
 
 
         self.layout.addRow(self.size_view.layout)
@@ -399,8 +425,6 @@ class PanelController(QObject):
         for key, editor in self.view.position_view.editors.items(): buffer[key] = editor.text();
         for key, editor in self.view.orientation_view.editors.items(): buffer[key] = editor.text();
 
-        print(buffer)
-
         if(shape == "Sphere"):
             data["radius"] = buffer["radius"]
         else:
@@ -409,19 +433,19 @@ class PanelController(QObject):
 
         rgb = (buffer["Red"],buffer["Green"],buffer["Blue"])
         position = (buffer["X"],buffer["Y"],buffer["Z"])
-        orientation = (buffer["x"],buffer["y"],buffer["z"])
+        quaternion = (buffer["x"],buffer["y"],buffer["z"],buffer["theta"])
 
         data["rgb"]=rgb
         data["position"]=position
-        data["orientation"]=orientation
+        data["quaternion"]=quaternion
 
+        print(buffer)
+        print(data)
         self.model.update(data)
 
     def update(self,id):
         #self.data = self.model.objects[id].data
         self.view.display(self.model.objects[id].data)
-
-
 
     def set_model(self,model):
         self.model = model
@@ -438,6 +462,10 @@ class PanelController(QObject):
             self.view.display(self.model.objects[id].data)
             self.view.apply_button.clicked.connect(self.update_object)
         pass
+
+
+
+
 
 
 class MainController(QMainWindow):
