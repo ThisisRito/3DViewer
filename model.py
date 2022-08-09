@@ -3,12 +3,6 @@
 # if __name__ == "__main__":
 #     pass
 
-#{"shape":"Sphere", "size":{"radius":3.0}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "quaternion":(1,2.0,-1,1)}
-#{"shape":"Cubiod", "size":{"height":3.0,"length":2.4, "width":0.1}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "quaternion":(1,2.0,-1,1),}
-#
-#
-#
-#
 
 from PySide2.QtCore import(Property, Signal, Slot, QObject)
 from PySide2.QtGui import (QVector3D)
@@ -16,7 +10,7 @@ from PySide2.QtGui import (QVector3D)
 import json
 import random
 
-#todo pure virtual
+
 class ObjectData(QObject):
     counter = 0
     def __init__(self,data=None):
@@ -26,7 +20,7 @@ class ObjectData(QObject):
             self.data = data
             return
 
-        ObjectData.counter += 1;
+        ObjectData.counter += 1
         print("increase")
         self.data = {
             "shape":None,
@@ -59,6 +53,7 @@ class ObjectData(QObject):
             return
         self.data["position"] = pos
         id = self.getId()
+        print("ObjectData.setPosition emits",id,pos)
         self.positionChanged.emit(id,pos)
 
     def setColor(self, rgb):
@@ -78,13 +73,14 @@ class ObjectData(QObject):
         id = self.getId()
         self.data["rgb"] = (r,g,b)
         rgb = r,g,b
-        #print("sending: color changed on", id);
+        print("ObjectData.setColor emits",id,rgb)
         self.colorChanged.emit(id,rgb)
 
     def setName(self, name):
         if name == self.data["name"]:	return
         self.data["name"] = name
         id = self.getId()
+        print("ObjectData.setName emits",id,name)
         self.nameChanged.emit(id,name)
 
     def setShape(self, shape_info):
@@ -106,6 +102,7 @@ class ObjectData(QObject):
         shape_info = {"shape":"Sphere", "radius":radius}
         self.data.update(shape_info)
         id = self.getId()
+        print("ObjectData.setSphere emits",id,shape_info)
         self.shapeChanged.emit(id,shape_info)
 
     def setCuboid(self, lengths):
@@ -122,7 +119,7 @@ class ObjectData(QObject):
         shape_info = {"shape":"Cuboid", "lengths":lengths}
         self.data.update(shape_info)
         id = self.getId()
-        print("sending shaped change",id,shape_info)
+        print("ObjectData.setCuboid emits",id,shape_info)
         self.shapeChanged.emit(id,shape_info)
 
     def setOrientation(self, quaternion):
@@ -133,6 +130,7 @@ class ObjectData(QObject):
             print("rotation parameter error")
             return
         self.data["quaternion"] = quaternion
+        print("ObjectData.setOrientation emits",id,quaternion)
         self.orientationChanged.emit(id,quaternion)
 
 
@@ -142,7 +140,11 @@ class ObjectData(QObject):
     shapeChanged = Signal(int,dict)
     nameChanged = Signal(int,str)
 
-    
+"""
+{"shape":"Sphere", "size":{"radius":3.0}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "quaternion":(1,2.0,-1,1)}
+{"shape":"Cubiod", "size":{"height":3.0,"length":2.4, "width":0.1}, "rgb":[122,0,255], "name":"my big sphere!!!", "position":[-11,25,3.1], "quaternion":(1,2.0,-1,1)}
+"""
+
 class SphereData(ObjectData):
     def __init__(self):
         super(SphereData,self).__init__()
@@ -174,7 +176,7 @@ class ObjectModel(QObject):
     def focus(self,id):
         if(self.focussed == id):	return
         self.focussed = id
-        #print("sending: focus on", id);
+        print("ObjectModel.focus", id)
         self.Focus.emit(id)
 
     def save_to_json(self):
@@ -200,7 +202,7 @@ class ObjectModel(QObject):
             return
 
     def save(self,backup):
-        js_data = self.save_to_json();
+        js_data = self.save_to_json()
         with open(backup,'w') as file:
             file.write(js_data)
 
@@ -218,6 +220,7 @@ class ObjectModel(QObject):
         if object != None:
             id = object.getId()
             self.objects[id] = object
+            print("ObjectModel.insert emits",id,object)
             self.Insert.emit(id,object)
             self.save(ObjectModel.backup)
             return
@@ -234,6 +237,7 @@ class ObjectModel(QObject):
         if(id == self.focussed):
             self.focus(-1)
 
+        print("ObjectModel.remove emits",id)
         self.Remove.emit(id)
         del self.objects[id]
         self.save(ObjectModel.backup)
@@ -247,23 +251,20 @@ class ObjectModel(QObject):
         self.save(ObjectModel.backup)
 
     def update(self,buffer):
-        #Todo check if the update is valid
-        id = self.focussed;
+        id = self.focussed
         if id == -1 or id not in self.objects:	return
 
         object = self.objects[id]
-        print("updating")
-        print(buffer)
         #if "name" in buffer: object.setName(buffer["name"])
         if "shape" in buffer: object.setShape(buffer)
         if "rgb" in buffer: object.setColor(buffer["rgb"])
         if "quaternion" in buffer: object.setOrientation(buffer["quaternion"])
         if "position" in buffer: object.setPosition(buffer["position"])
 
-        #print(self.save_to_json())
         self.save(ObjectModel.backup)
-
         self.objects[id] = object
+
+        print("ObjectModel.update emmits",id)
         self.Update.emit(id)
 
     def get(self,id):
@@ -273,22 +274,3 @@ class ObjectModel(QObject):
     def print(self):
         for id in self.objects:
             print(self.objects[id].data)
-
-
-class hehe:
-    @Slot(int,int)
-    def say_some_words(self,words,a):
-        print(words)
-
-
-class Communicate(QObject):
-    speak = Signal(int,int)
-
-
-haha = hehe()
-
-someone = Communicate()
-someone.speak.connect(haha.say_some_words)
-print(type(someone.speak))
-someone.speak.emit(10,20)
-
