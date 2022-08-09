@@ -13,14 +13,21 @@
 from PySide2.QtCore import(Property, Signal, Slot, QObject)
 from PySide2.QtGui import (QVector3D)
 
+import json
 import random
 
 #todo pure virtual
 class ObjectData(QObject):
     counter = 0
-    def __init__(self):
+    def __init__(self,data=None):
         super(ObjectData,self).__init__()
+
+        if data != None:
+            self.data = data
+            return
+
         ObjectData.counter += 1;
+        print("increase")
         self.data = {
             "shape":None,
             "rgb":tuple([random.randint(0,255) for i in range(3)]),
@@ -156,6 +163,8 @@ class ObjectModel(QObject):
     Update = Signal(int)
     Remove = Signal(int)
     Focus = Signal(int)
+    backup = "/tmp/3DView.json"
+
 
     def __init__(self):
         super(ObjectModel,self).__init__()
@@ -168,12 +177,50 @@ class ObjectModel(QObject):
         #print("sending: focus on", id);
         self.Focus.emit(id)
 
+    def save_to_json(self):
+        buffer = dict()
+        buffer["id_counter"] = ObjectData.counter
+        buffer["objects"] = {}
+
+
+        for id,object in self.objects.items():
+            buffer["objects"][id] = object.data
+        return json.dumps(buffer)
+
+    def load_from_json(self,data):
+        try:
+            data = json.loads(data)
+            ObjectData.counter = data["id_counter"]
+            objects = data["objects"]
+            for id,object in objects.items():
+                self.insert(ObjectData(object))
+        except:
+            raise
+            print("local storage error")
+            return
+
+    def save(self,backup):
+        js_data = self.save_to_json();
+        with open(backup,'w') as file:
+            file.write(js_data)
+
+    def load(self,backup):
+        js_data = None
+        try:
+            with open(backup,'r') as file:
+                js_data = file.read()
+            self.load_from_json(js_data)
+        except Exception as e:
+            print(e)
+            return
+
     def insert(self,object = None):
         if object != None:
             id = object.getId()
             self.objects[id] = object
             self.Insert.emit(id,object)
-            return 
+            self.save(ObjectModel.backup)
+            return
 
         if random.randint(0,1) == 0:
             self.insert(SphereData())
@@ -184,9 +231,20 @@ class ObjectModel(QObject):
         if self.objects.get(id) == None:
             return
         object = self.objects[id]
+        if(id == self.focussed):
+            self.focus(-1)
+
         self.Remove.emit(id)
         del self.objects[id]
+        self.save(ObjectModel.backup)
         return object
+
+    def set_name(self,id,name):
+        if id not in self.objects:
+            return
+        object = self.objects[id]
+        object.setName(name)
+        self.save(ObjectModel.backup)
 
     def update(self,buffer):
         #Todo check if the update is valid
@@ -202,7 +260,8 @@ class ObjectModel(QObject):
         if "quaternion" in buffer: object.setOrientation(buffer["quaternion"])
         if "position" in buffer: object.setPosition(buffer["position"])
 
-        print(object)
+        #print(self.save_to_json())
+        self.save(ObjectModel.backup)
 
         self.objects[id] = object
         self.Update.emit(id)

@@ -36,7 +36,6 @@ import random
 
 class Entity(Qt3DCore.QEntity):
     def __init__(self,rootEntity=None):
-        print(type(rootEntity))
         super(Entity, self).__init__(rootEntity)
         # store the references to the compoents
         self._transform = Qt3DCore.QTransform()
@@ -61,7 +60,6 @@ class Entity(Qt3DCore.QEntity):
 
         if shape_info["shape"] == "Cuboid":
             x,y,z = shape_info["lengths"]
-            print(x,y,z)
             self._mesh = Qt3DExtras.QCuboidMesh()
             self._mesh.setXExtent(x)
             self._mesh.setYExtent(y)
@@ -80,8 +78,6 @@ class Entity(Qt3DCore.QEntity):
 
     def set_orientation(self,id,quaternion):
         x,y,z,theta = quaternion;
-        #print('log',QQuaternion(theta,QVector3D(x,y,z)))
-        #print('log',x,y,z,theta)
 
         self._transform.setRotation(QQuaternion.fromAxisAndAngle(QVector3D(x,y,z),theta))
         pass
@@ -90,7 +86,6 @@ class Entity(Qt3DCore.QEntity):
         print('received')
         r,g,b = rgb
         self._material.setDiffuse(QColor(r,g,b));
-        print("after set")
         print(self._material.diffuse().getRgb())
 
     def get_rgb(self):
@@ -163,7 +158,6 @@ class ObjectsController(QObject):
         self.view.setParent(parent)
     def set_model(self, model):
         self.model = model
-        print(type(model))
         self.model.Insert.connect(self.insert)
         self.model.Remove.connect(self.remove)
         pass
@@ -244,6 +238,7 @@ class ListViewController(QObject):
 
     def focus(self):
         row = self.view.getSelctedRow()
+        print(row,self.view.layout.count())
         id = self.ids[row]
         print("calling: focus on", id);
         self.model.focus(id)
@@ -275,14 +270,14 @@ class ListViewController(QObject):
         row = self.ids.index(id)
         item = self.view.listWidget.item(row)
         item.setText(name)
-        print("name = ", name)
         self.view.listWidget.closePersistentEditor(item)
 
     def item_is_changed(self,item):
         name = item.text()
         selected_row = self.view.getSelctedRow()
         id = self.ids[selected_row]
-        self.model.objects[id].setName(name);
+        self.model.set_name(id,name);
+        #TODO
 
     def add_button_is_clicked(self):
         print("send")
@@ -311,13 +306,11 @@ class DataView(QWidget):
         self.clear()
         if title != None: self.layout.addRow(title,QLabel())
         for key,value in zip(keys,values):
-            print(key,value)
             if(isinstance(value,float)):
                 self.editors[key] = QLineEdit("{:.2f}".format(value))
             else:
                 self.editors[key] = QLineEdit(str(value))
             self.layout.addRow(key,self.editors[key])
-        print(self.layout.count())
 
 class PanelView(QWidget):
     def __init__(self,par=None):
@@ -341,32 +334,34 @@ class PanelView(QWidget):
     def change_shape(self, shape):
         #0 for Sphere
         #1 for Cuboid
-        object = None
+        data = {}
         if shape == 0:
-            object = SphereData()
-            self.size_view.set_dict(None,["radius"],[object.data["radius"]])
+            data["radius"] = 1.0
+            self.size_view.set_dict(None,["radius"],[data["radius"]])
         if shape == 1:
-            object = CuboidData()
+            data["lengths"] = (2.0,2.0,2.0)
             keys = ("length","width","height")
-            values = object.data["lengths"]
+            values = data["lengths"]
             self.size_view.set_dict(None,keys,values)
 
     def clear(self):
         #self.layout = QFormLayout()
-        while self.layout.count() > 0:
-            item = self.layout.itemAt(0)
+        to_delete = [self.layout.itemAt(i) for i in range(self.layout.count())]
+        for item in to_delete:
             self.layout.removeItem(item)
+
+        #while self.layout.count() > 0:
+            #item = self.layout.itemAt(0)
+            #self.layout.removeItem(item)
             #self.layout.removeRow(0)
 
     #PySide2.QtWidgets.QComboBox.currentIndexChanged(index)
 
     def display(self, data):
         self.clear()
-        print(self.layout.count())
 
         self.name.setText(data["name"])
 
-        print(data)
         if(data["shape"] == "Sphere"):
             self.size_view.set_dict(None,["radius"],[data["radius"]])
             self.shape_box.setCurrentIndex(0)
@@ -398,7 +393,6 @@ class PanelView(QWidget):
         self.layout.addRow(self.apply_button)
         self.setLayout(self.layout)
 
-        print(self.layout.count())
 
 
 class PanelController(QObject):
@@ -439,8 +433,6 @@ class PanelController(QObject):
         data["position"]=position
         data["quaternion"]=quaternion
 
-        print(buffer)
-        print(data)
         self.model.update(data)
 
     def update(self,id):
@@ -469,12 +461,14 @@ class PanelController(QObject):
 
 
 class MainController(QMainWindow):
+    backup = "/tmp/3DView.json"
 
     def __init__(self):
         super(MainController, self).__init__()
         self.setWindowTitle("3DViewer")
 
         self.model = ObjectModel()
+        self.model.backup = self.backup
 
 
         self.objects_controller = ObjectsController()
@@ -499,6 +493,8 @@ class MainController(QMainWindow):
         widget = QWidget()
         widget.setLayout(self.layout)
         self.setCentralWidget(widget)
+
+        self.model.load(MainController.backup)
 
 
 if __name__ == '__main__':
